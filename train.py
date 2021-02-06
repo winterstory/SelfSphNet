@@ -1,19 +1,17 @@
 import numpy as np
 import os
-from keras.layers import Dense, Flatten, LeakyReLU, Lambda, Dropout, BatchNormalization, Activation, Concatenate, GlobalAveragePooling2D
-from keras.layers.convolutional import Conv2D
-from keras.layers.pooling import MaxPool2D
-from keras.models import Model, Input, Sequential
-from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint, TensorBoard, LearningRateScheduler, Callback
 import tensorflow as tf
-import helper
-from keras import regularizers
+import utils.helper as helper
+
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback
 from keras.initializers import Constant
+from keras.layers import Dense, Lambda, BatchNormalization, Activation, Concatenate, GlobalAveragePooling2D
+from keras.layers.convolutional import Conv2D
+from keras.models import Model, Input
+from keras.optimizers import Adam
+from keras import regularizers
 from keras import backend as K
 #from keras.utils import plot_model
-import logging
-import reconstruction
 
 
 lr = 0.0002
@@ -46,8 +44,14 @@ lambda_epi = K.variable(0.6)
 lambda_ssim = K.variable(1.0)
 lambda_l1 = K.variable(0.3)
 
+
 class MyCallback(Callback):
-  def __init__(self, lambda_epi, lambda_ssim, lambda_l1):
+
+  def __init__(
+          self,
+          lambda_epi,
+          lambda_ssim,
+          lambda_l1):
     self.lambda_epi = lambda_epi
     self.lambda_ssim = lambda_ssim
     self.lambda_l1 = lambda_l1
@@ -149,7 +153,7 @@ if __name__ == "__main__":
   convraw_relu3_1 = Activation('relu')(convraw_bn3_1)
   convraw3_2 = Conv2D(
     filters = 128,
-    3,
+    kernel_size = 3,
     strides = (2, 2),
     padding = 'same',
     activation = None,
