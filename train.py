@@ -286,9 +286,23 @@ if __name__ == "__main__":
     optimizer = optimizer,
     loss = [
       helper.loss_dummy,
-      helper.epipolar_loss(input_of, output_q01),
-      helper.reconstruction_loss_SSIM(input_of, frame_t0, frame_t2, output_q01, output_t01, output_t02),
-      helper.reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02, output_t01)],
+      helper.epipolar_loss(
+        input_of,
+        output_q01),
+      helper.reconstruction_loss_SSIM(
+        input_of,
+        frame_t0,
+        frame_t2,
+        output_q01,
+        output_t01,
+        output_t02),
+      helper.reconstruction_loss_L1(
+        input_of,
+        frame_t0,
+        frame_t2,
+        output_q01,
+        output_q02,
+        output_t01)],
     loss_weights = [0.0, lambda_epi, lambda_ssim, lambda_l1])
 
   # Setup checkpointer
