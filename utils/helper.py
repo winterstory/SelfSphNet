@@ -147,11 +147,11 @@ def save_history(history, result_file):
 				val_loss[i], val_tran_1_loss[i], val_quat_2_loss[i], val_tran_2_loss[i]))
 
 
-def tf_batch_matrix(matrix):
+def get_tf_batch_matrix(matrix):
 	return tf.transpose(tf.stack(matrix), [2, 0, 1])
 
 
-def gaussFilter(fx, fy, sigma):
+def apply_gauss_filter(fx, fy, sigma):
 	x = tf.range(-int(fx / 2), int(fx / 2) + 1, 1)
 	y = x
 	Y, X = tf.meshgrid(x, y)
@@ -164,9 +164,9 @@ def gaussFilter(fx, fy, sigma):
 	return k
 
 
-def gaussian_blur(image, filtersize, sigma, n_channels):
+def apply_gaussian_blur(image, filtersize, sigma, n_channels):
 	fx, fy = filtersize[0], filtersize[1]
-	fil = gaussFilter(fx, fy, sigma)
+	fil = apply_gauss_filter(fx, fy, sigma)
 	fil = tf.stack([fil] * n_channels, axis=2)
 	fil = tf.expand_dims(fil, 3)
 
@@ -176,103 +176,26 @@ def gaussian_blur(image, filtersize, sigma, n_channels):
 
 	return res
 
-def median_blur(x, filter_size, strides=[1,1,1,1]):
-	x_size = x.get_shape().as_list()
 
-	patches = tf.extract_image_patches(x, [1, filter_size, filter_size, 1], strides, 4*[1], 'SAME', name="median_pool")
+def apply_median_blur(x, filter_size, strides=[1,1,1,1]):
+	patches = tf.extract_image_patches(
+		x,
+		[1, filter_size, filter_size, 1],
+		strides,
+		4 * [1],
+		'SAME',
+		name = "median_pool")
 	patches = tf.expand_dims(patches, -1)
-	medians = tf.contrib.distributions.percentile(patches, 50, axis=3, keep_dims=False)
+	medians = tf.contrib.distributions.percentile(
+		patches,
+		50,
+		axis = 3,
+		keep_dims = False)
 
 	return medians
 
-def compute_smooth_loss(input_of, output_q01):
 
-	# Optical flow 2ch
-	input_of = K.clip(input_of, min_value=-float('inf'), max_value=float('inf'))
-	output_q01 = K.clip(output_q01, min_value=-float('inf'), max_value=float('inf'))
-
-	# Epsilon prevents zero (loss goes inf)
-	eps = K.epsilon()
-	batch_size = tf.shape(input_of)[0]
-	height = tf.shape(input_of)[1]
-	width = tf.shape(input_of)[2]
-
-	def gradient(pred):
-		D_dy = pred[:, 1:, :, :] - pred[:, :-1, :, :]
-		D_dx = pred[:, :, 1:, :] - pred[:, :, :-1, :]
-		return D_dx, D_dy
-
-	def disp_loss(pred_disp):
-		dx, dy = gradient(pred_disp)
-		dx2, dxdy = gradient(dx)
-		dydx, dy2 = gradient(dy)
-		loss = tf.reduce_mean(tf.abs(dx2)) + tf.reduce_mean(tf.abs(dxdy)) + tf.reduce_mean(tf.abs(dydx)) + tf.reduce_mean(tf.abs(dy2))
-		return loss
-
-	def custom_loss(y_true, y_pred):
-
-		# output_t01 = y_pred
-		output_t01 = K.clip(y_pred, min_value=-float('inf'), max_value=float('inf'))
-
-		# Quaternion
-		qw01, qx01, qy01, qz01 = output_q01[:,0], output_q01[:,1], output_q01[:,2], output_q01[:,3]
-		q_norm = K.sqrt(K.square(qw01) + K.square(qx01) + K.square(qy01) + K.square(qz01) + eps)
-		qw01, qx01, qy01, qz01 = qw01/q_norm, -qx01/q_norm, -qy01/q_norm, -qz01/q_norm
-
-		# u,v tensor
-		u_tensor = K.tile(K.arange(0, w, step=1, dtype='float32'), [h])
-		u_tensor = K.reshape(u_tensor, [h, w])
-
-		v_tensor = K.tile(K.arange(0, h, step=1, dtype='float32'), [w])
-		v_tensor = K.transpose(K.reshape(v_tensor, [w, h]))
-
-		# 3D location original
-		X = K.sin(math.pi * u_tensor / h) * K.sin(math.pi * v_tensor / h)
-		Y = K.cos(math.pi * u_tensor / h) * K.sin(math.pi * v_tensor / h)
-		Z = K.cos(math.pi * v_tensor / h)
-		XYZ = K.tile(K.expand_dims(K.reshape(K.stack([X, Y, Z]), [3, height * width]), 0), [batch_size, 1, 1])
-
-		# Optical flow, FX/FY/FZ original
-		FX = K.sin(math.pi * (u_tensor + input_of[:,:,:,0]) / h) * K.sin(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
-		FY = K.cos(math.pi * (u_tensor + input_of[:,:,:,0]) / h) * K.sin(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
-		FZ = K.cos(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
-
-		# 3D location derotated
-		Rq = tf_batch_matrix([
-			[qw01 * qw01 + qx01 * qx01 - qy01 * qy01 - qz01 * qz01, 2 * (qx01 * qy01 - qw01 * qz01), 2 * (qx01 * qz01 + qw01 * qy01)],
-			[2 * (qx01 * qy01 + qw01 * qz01), qw01 * qw01 - qx01 * qx01 + qy01 * qy01 - qz01 * qz01, 2 * (qy01 * qz01 - qw01 * qx01)],
-			[2 * (qx01 * qz01 - qw01 * qy01), 2 * (qy01 * qz01 + qw01 * qx01), qw01 * qw01 - qx01 * qx01 - qy01 * qy01 + qz01 * qz01]
-		])
-
-		XYZ_derotated = K.reshape(tf.matmul(Rq, XYZ), [batch_size, 3, height, width])
-		X_derot_pred = XYZ_derotated[:, 0, :, :]
-		Y_derot_pred = XYZ_derotated[:, 1, :, :]
-		Z_derot_pred = XYZ_derotated[:, 2, :, :]
-
-		Disp = K.sqrt((FX - X_derot_pred) ** 2 + (FY - Y_derot_pred) ** 2 + (FZ - Z_derot_pred) ** 2 + eps)
-
-		tx01, ty01, tz01 = output_t01[:,0], output_t01[:,1], output_t01[:,2]
-		t01 = K.sqrt(tx01**2 + ty01**2 + tz01**2 + eps)
-		tx01, ty01, tz01 = -tx01/t01, -ty01/t01, -tz01/t01
-
-		tx01 = K.reshape(K.tile(tx01, [h * w]), [batch_size, h, w])
-		ty01 = K.reshape(K.tile(ty01, [h * w]), [batch_size, h, w])
-		tz01 = K.reshape(K.tile(tz01, [h * w]), [batch_size, h, w])
-
-		Omega = K.clip(X_derot_pred * tx01 + Y_derot_pred * ty01 + Z_derot_pred * tz01, min_value=-1.0+eps, max_value=1.0-eps)
-		Omega = tf.acos(Omega)
-
-		# Fix translation(t0->t1) scale to 1.0
-		t_0 = 1.0
-		Depth = t_0 * (K.abs(K.sin(Omega + Disp)) + eps) / (K.sin(Disp) + eps) + eps
-		Depth = K.expand_dims(Depth, -1)
-		smooth_loss = disp_loss(Depth)
-
-		return smooth_loss
-
-	return custom_loss
-
-def epipolar_loss(input_of, output_q):
+def get_epipolar_loss(input_of, output_q):
 
 	# Optical flow 2ch
 	input_of = K.clip(input_of, min_value=-float('inf'), max_value=float('inf'))
@@ -320,7 +243,7 @@ def epipolar_loss(input_of, output_q):
 		F = K.sqrt(K.square(FX) + K.square(FY) + K.square(FZ) + eps)
 
 		# 3D location derotated
-		Rq = tf_batch_matrix([
+		Rq = get_tf_batch_matrix([
 			[qw2 * qw2 + qx2 * qx2 - qy2 * qy2 - qz2 * qz2, 2 * (qx2 * qy2 - qw2 * qz2), 2 * (qx2 * qz2 + qw2 * qy2)],
 			[2 * (qx2 * qy2 + qw2 * qz2), qw2 * qw2 - qx2 * qx2 + qy2 * qy2 - qz2 * qz2, 2 * (qy2 * qz2 - qw2 * qx2)],
 			[2 * (qx2 * qz2 - qw2 * qy2), 2 * (qy2 * qz2 + qw2 * qx2), qw2 * qw2 - qx2 * qx2 - qy2 * qy2 + qz2 * qz2]
@@ -372,7 +295,8 @@ def epipolar_loss(input_of, output_q):
 
 	return custom_loss
 
-def reconstruction_loss_SSIM(input_of, frame_t0, frame_t2, output_q01, output_t01, output_t02):
+
+def get_reconstruction_loss_SSIM(input_of, frame_t0, frame_t2, output_q01, output_t01, output_t02):
 
 	# Optical flow 2ch
 	input_of = K.clip(input_of, min_value=-float('inf'), max_value=float('inf'))
@@ -417,7 +341,7 @@ def reconstruction_loss_SSIM(input_of, frame_t0, frame_t2, output_q01, output_t0
 		FZ = K.cos(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
 
 		# 3D location derotated
-		Rq = tf_batch_matrix([
+		Rq = get_tf_batch_matrix([
 			[qw01 * qw01 + qx01 * qx01 - qy01 * qy01 - qz01 * qz01, 2 * (qx01 * qy01 - qw01 * qz01), 2 * (qx01 * qz01 + qw01 * qy01)],
 			[2 * (qx01 * qy01 + qw01 * qz01), qw01 * qw01 - qx01 * qx01 + qy01 * qy01 - qz01 * qz01, 2 * (qy01 * qz01 - qw01 * qx01)],
 			[2 * (qx01 * qz01 - qw01 * qy01), 2 * (qy01 * qz01 + qw01 * qx01), qw01 * qw01 - qx01 * qx01 - qy01 * qy01 + qz01 * qz01]
@@ -448,11 +372,11 @@ def reconstruction_loss_SSIM(input_of, frame_t0, frame_t2, output_q01, output_t0
 
     # Gaussian filtered depth
 		Depth = tf.expand_dims(Depth, 3)
-		Depth = tf.squeeze(gaussian_blur(Depth, [7, 7], 2.0, 1), 3)
+		Depth = tf.squeeze(apply_gaussian_blur(Depth, [7, 7], 2.0, 1), 3)
 
 		# Median filtered depth
 		#Depth = tf.expand_dims(Depth, 3)
-		#Depth = tf.squeeze(median_blur(Depth, 5))
+		#Depth = tf.squeeze(apply_median_blur(Depth, 5))
 
 		# Reconstruction loss with depth
 		qw02, qx02, qy02, qz02 = y_pred[:,0], y_pred[:,1], y_pred[:,2], y_pred[:,3]
@@ -470,7 +394,8 @@ def reconstruction_loss_SSIM(input_of, frame_t0, frame_t2, output_q01, output_t0
 
 	return custom_loss
 
-def reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02, output_t01):
+
+def get_reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02, output_t01):
 
 	# Optical flow 2ch
 	input_of = K.clip(input_of, min_value=-float('inf'), max_value=float('inf'))
@@ -515,7 +440,7 @@ def reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02,
 		FZ = K.cos(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
 
 		# 3D location derotated
-		Rq = tf_batch_matrix([
+		Rq = get_tf_batch_matrix([
 			[qw01 * qw01 + qx01 * qx01 - qy01 * qy01 - qz01 * qz01, 2 * (qx01 * qy01 - qw01 * qz01), 2 * (qx01 * qz01 + qw01 * qy01)],
 			[2 * (qx01 * qy01 + qw01 * qz01), qw01 * qw01 - qx01 * qx01 + qy01 * qy01 - qz01 * qz01, 2 * (qy01 * qz01 - qw01 * qx01)],
 			[2 * (qx01 * qz01 - qw01 * qy01), 2 * (qy01 * qz01 + qw01 * qx01), qw01 * qw01 - qx01 * qx01 - qy01 * qy01 + qz01 * qz01]
@@ -546,11 +471,11 @@ def reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02,
 
 		# Gaussian filtered depth
 		Depth = tf.expand_dims(Depth, 3)
-		Depth = tf.squeeze(gaussian_blur(Depth, [7, 7], 2.0, 1), 3)
+		Depth = tf.squeeze(apply_gaussian_blur(Depth, [7, 7], 2.0, 1), 3)
 
 		# Median filtered depth
 		#Depth = tf.expand_dims(Depth, 3)
-		#Depth = tf.squeeze(median_blur(Depth, 5))
+		#Depth = tf.squeeze(apply_median_blur(Depth, 5))
 
 		# Reconstruction loss with depth
 		tx02, ty02, tz02 = y_pred[:,0], y_pred[:,1], y_pred[:,2]
@@ -584,7 +509,7 @@ def reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02,
 	return custom_loss
 
 
-def multi_scale_reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02, output_t01):
+def get_multi_scale_reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01, output_q02, output_t01):
 
 	# Optical flow 2ch
 	input_of = K.clip(input_of, min_value=-float('inf'), max_value=float('inf'))
@@ -631,7 +556,7 @@ def multi_scale_reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01,
 		FZ = K.cos(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
 
 		# 3D location derotated
-		Rq = tf_batch_matrix([
+		Rq = get_tf_batch_matrix([
 			[qw01 * qw01 + qx01 * qx01 - qy01 * qy01 - qz01 * qz01, 2 * (qx01 * qy01 - qw01 * qz01), 2 * (qx01 * qz01 + qw01 * qy01)],
 			[2 * (qx01 * qy01 + qw01 * qz01), qw01 * qw01 - qx01 * qx01 + qy01 * qy01 - qz01 * qz01, 2 * (qy01 * qz01 - qw01 * qx01)],
 			[2 * (qx01 * qz01 - qw01 * qy01), 2 * (qy01 * qz01 + qw01 * qx01), qw01 * qw01 - qx01 * qx01 - qy01 * qy01 + qz01 * qz01]
@@ -661,7 +586,7 @@ def multi_scale_reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01,
 
 		# Gaussian filtered depth
 		Depth = tf.expand_dims(Depth, 3)
-		Depth = gaussian_blur(Depth, [7, 7], 2.0, 1)
+		Depth = apply_gaussian_blur(Depth, [7, 7], 2.0, 1)
 
 		# Reconstruction loss with depth
 		tx02, ty02, tz02 = y_pred[:,0], y_pred[:,1], y_pred[:,2]
@@ -733,103 +658,17 @@ def multi_scale_reconstruction_loss_L1(input_of, frame_t0, frame_t2, output_q01,
 	return custom_loss
 
 
-def moment_loss(input_of):  # y_pred = quaternion output
-	# Optical flow 2ch
-	input_of = K.clip(input_of, min_value=-float('inf'), max_value=float('inf'))
-
-	# Epsilon prevents zero (loss goes inf)
-	eps = K.epsilon()
-	batch_size = tf.shape(input_of)[0]
-	height = tf.shape(input_of)[1]
-	width = tf.shape(input_of)[2]
-
-	def custom_loss(y_true, y_pred):
-
-		y_pred = K.clip(y_pred, min_value=-float('inf'), max_value=float('inf'))
-
-		# Quaternion
-		qw2, qx2, qy2, qz2 = y_pred[:,0], y_pred[:,1], y_pred[:,2], y_pred[:,3]
-		q_norm = K.sqrt(K.square(qw2) + K.square(qx2) + K.square(qy2) + K.square(qz2) + eps)
-		qw2, qx2, qy2, qz2 = qw2/q_norm, -qx2/q_norm, -qy2/q_norm, -qz2/q_norm
-
-		# u,v tensor
-		u_tensor = K.tile(K.arange(0, w, step=1, dtype='float32'), [h])
-		u_tensor = K.reshape(u_tensor, [h, w])
-
-		v_tensor = K.tile(K.arange(0, h, step=1, dtype='float32'), [w])
-		v_tensor = K.transpose(K.reshape(v_tensor, [w, h]))
-
-		# 3D location original
-		X = K.sin(math.pi * u_tensor / h) * K.sin(math.pi * v_tensor / h)
-		Y = K.cos(math.pi * u_tensor / h) * K.sin(math.pi * v_tensor / h)
-		Z = K.cos(math.pi * v_tensor / h)
-		XYZ = K.tile(K.expand_dims(K.reshape(K.stack([X, Y, Z]), [3, height * width]), 0), [batch_size, 1, 1])
-
-		# Optical flow, FX/FY/FZ original
-		FX = K.sin(math.pi * (u_tensor + input_of[:, :, :, 0]) / h) * K.sin(math.pi * (v_tensor + input_of[:, :, :, 1]) / h)
-		FY = K.cos(math.pi * (u_tensor + input_of[:, :, :, 0]) / h) * K.sin(math.pi * (v_tensor + input_of[:, :, :, 1]) / h)
-		FZ = K.cos(math.pi * (v_tensor + input_of[:, :, :, 1]) / h)
-
-		# Optical flow, F original
-		F = K.sqrt(K.square(FX) + K.square(FY) + K.square(FZ) + eps)
-
-		# 3D location derotated
-		Rq = tf_batch_matrix([
-			[qw2 * qw2 + qx2 * qx2 - qy2 * qy2 - qz2 * qz2, 2 * (qx2 * qy2 - qw2 * qz2), 2 * (qx2 * qz2 + qw2 * qy2)],
-			[2 * (qx2 * qy2 + qw2 * qz2), qw2 * qw2 - qx2 * qx2 + qy2 * qy2 - qz2 * qz2, 2 * (qy2 * qz2 - qw2 * qx2)],
-			[2 * (qx2 * qz2 - qw2 * qy2), 2 * (qy2 * qz2 + qw2 * qx2), qw2 * qw2 - qx2 * qx2 - qy2 * qy2 + qz2 * qz2]
-		])
-
-		XYZ_derotated = K.reshape(tf.matmul(Rq, XYZ), [batch_size, 3, height, width])
-		X_derot_pred = XYZ_derotated[:, 0, :, :]
-		Y_derot_pred = XYZ_derotated[:, 1, :, :]
-		Z_derot_pred = XYZ_derotated[:, 2, :, :]
-
-		# Optical flow, FX/FY/FZ reprojected
-		FX_pred = FX / (F + eps) - X_derot_pred
-		FY_pred = FY / (F + eps) - Y_derot_pred
-		FZ_pred = FZ / (F + eps) - Z_derot_pred
-
-		# Weights
-		W_kernel1 = K.tile(K.constant([0]), [int(w * h / 4) * batch_size])
-		W_kernel1 = K.reshape(W_kernel1, [batch_size, int(w * h / 4)])
-		W_kernel2 = K.tile(K.constant([1]), [int(w * h / 2) * batch_size])
-		W_kernel2 = K.reshape(W_kernel2, [batch_size, int(w * h / 2)])
-
-		W_kernel = K.concatenate([W_kernel1, W_kernel2], axis=-1)
-		W_kernel = K.concatenate([W_kernel, W_kernel1], axis=-1)
-		W_kernel = K.reshape(W_kernel, [batch_size, h, w])
-
-		W = K.sqrt(1 - Z * Z + eps)
-		W = W * W_kernel
-
-		# Directional moment with weights, MX/MY/MZ
-		Moment_X_pred = (Y_derot_pred * FZ_pred - Z_derot_pred * FY_pred) * W
-		Moment_Y_pred = (Z_derot_pred * FX_pred - X_derot_pred * FZ_pred) * W
-		Moment_Z_pred = (X_derot_pred * FY_pred - Y_derot_pred * FX_pred) * W
-
-		Moment_X_pred_sum = K.sum(Moment_X_pred, axis=(1,2))
-		Moment_Y_pred_sum = K.sum(Moment_Y_pred, axis=(1,2))
-		Moment_Z_pred_sum = K.sum(Moment_Z_pred, axis=(1,2))
-
-		Moment_XYZ_pred_sum = K.sqrt(K.square(Moment_X_pred_sum) + K.square(Moment_Y_pred_sum) + K.square(Moment_Z_pred_sum) + eps) / (w*h/2)
-
-		# Loss function
-		loss = Moment_XYZ_pred_sum
-
-		return loss
-
-	return custom_loss
-
 def supervision(y_true, y_pred):
 	loss = K.sqrt(K.sum(K.square(y_true[:, :] - y_pred[:, :]), axis=1, keepdims=True))
 
 	return loss
 
+
 def loss_dummy(y_true, y_pred):
 	y_pred = K.clip(y_pred, min_value=-float('inf'), max_value=float('inf'))
 
 	return y_pred
+
 
 def read_npy(input_path, height, width, dim):
 	input = np.load(input_path)
@@ -837,6 +676,7 @@ def read_npy(input_path, height, width, dim):
 	input = tf.reshape(input, [height, width, dim])
 
 	return tf.expand_dims(input, 0)
+
 
 def read_image(image_path, shape):
 	if image_path.lower().endswith("png"):
@@ -847,97 +687,3 @@ def read_image(image_path, shape):
 	image = tf.image.resize(image, shape, tf.image.ResizeMethod.AREA)
 
 	return tf.expand_dims(image, 0)
-
-def epipolar_loss_check(inputs, qw, qx, qy, qz, tx, ty, tz):
-
-	# Optical flow 2ch
-	input_of = K.clip(inputs, min_value=-float('inf'), max_value=float('inf'))
-
-	# Epsilon prevents zero (loss goes inf)
-	eps = K.epsilon()
-	batch_size = tf.shape(inputs)[0]
-	height = tf.shape(inputs)[1]
-	width = tf.shape(inputs)[2]
-
-	# Quaternion
-	qw2, qx2, qy2, qz2 = qw, qx, qy, qz
-	q_norm = K.sqrt(K.square(qw2) + K.square(qx2) + K.square(qy2) + K.square(qz2) + eps)
-	qw2, qx2, qy2, qz2 = qw2/q_norm, -qx2/q_norm, -qy2/q_norm, -qz2/q_norm
-
-	# Translation
-	epi_x, epi_y, epi_z = tx, ty, tz
-	epi_norm = K.sqrt(K.square(epi_x) + K.square(epi_y) + K.square(epi_z) + eps)
-	epi_x, epi_y, epi_z = -epi_x/epi_norm, -epi_y/epi_norm, -epi_z/epi_norm
-
-	# u,v tensor
-	u_tensor = K.tile(K.arange(0, w, step=1, dtype='float32'), [h])
-	u_tensor = K.reshape(u_tensor, [h,w])
-
-	v_tensor = K.tile(K.arange(0, h, step=1, dtype='float32'), [w])
-	v_tensor = K.transpose(K.reshape(v_tensor, [w,h]))
-
-	# 3D location original
-	X = K.sin(math.pi * u_tensor / h) * K.sin(math.pi * v_tensor / h)
-	Y = K.cos(math.pi * u_tensor / h) * K.sin(math.pi * v_tensor / h)
-	Z = K.cos(math.pi * v_tensor / h)
-	XYZ = K.tile(K.expand_dims(K.reshape(K.stack([X, Y, Z]), [3, height * width]), 0), [batch_size, 1, 1])
-
-	# Optical flow, FX/FY/FZ original
-	FX = K.sin(math.pi * (u_tensor + input_of[:,:,:,0]) / h) * K.sin(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
-	FY = K.cos(math.pi * (u_tensor + input_of[:,:,:,0]) / h) * K.sin(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
-	FZ = K.cos(math.pi * (v_tensor + input_of[:,:,:,1]) / h)
-
-	# Optical flow, F original
-	F = K.sqrt(K.square(FX) + K.square(FY) + K.square(FZ) + eps)
-
-	# 3D location derotated
-	Rq = tf_batch_matrix([
-		[qw2*qw2 + qx2*qx2 - qy2*qy2 - qz2*qz2, 2*(qx2*qy2 - qw2*qz2), 2*(qx2*qz2 + qw2*qy2)],
-		[2*(qx2*qy2 + qw2*qz2), qw2*qw2 - qx2*qx2 + qy2*qy2 - qz2*qz2, 2*(qy2*qz2 - qw2*qx2)],
-		[2*(qx2*qz2 - qw2*qy2), 2*(qy2*qz2 + qw2*qx2), qw2*qw2 - qx2*qx2 - qy2*qy2 + qz2*qz2]
-	])
-
-	XYZ_derotated = K.reshape(tf.matmul(Rq, XYZ), [batch_size, 3, height, width])
-	X_derot_pred = XYZ_derotated[:, 0, :, :]
-	Y_derot_pred = XYZ_derotated[:, 1, :, :]
-	Z_derot_pred = XYZ_derotated[:, 2, :, :]
-
-	# Optical flow, FX/FY/FZ reprojected
-	FX_pred = FX/(F+eps) - X_derot_pred
-	FY_pred = FY/(F+eps) - Y_derot_pred
-	FZ_pred = FZ/(F+eps) - Z_derot_pred
-
-	# Weights
-	W_kernel1 = K.tile(K.constant([0]), [int(w*h/4) * 3])
-	W_kernel1 = K.reshape(W_kernel1, [3, int(w*h/4)])
-	W_kernel2 = K.tile(K.constant([1]), [int(w*h/2) * 3])
-	W_kernel2 = K.reshape(W_kernel2, [3, int(w*h/2)])
-
-	W_kernel = K.concatenate([W_kernel1, W_kernel2], axis=-1)
-	W_kernel = K.concatenate([W_kernel, W_kernel1], axis=-1)
-	W_kernel = K.reshape(W_kernel, [3,h,w])
-
-	W = K.sqrt(1-Z*Z + eps)
-	W = W * W_kernel
-
-	epi_x = K.expand_dims(K.expand_dims(epi_x, 1), 2)
-	epi_y = K.expand_dims(K.expand_dims(epi_y, 1), 2)
-	epi_z = K.expand_dims(K.expand_dims(epi_z, 1), 2)
-
-	Nq_x, Nq_y, Nq_z = epi_y*Z_derot_pred - epi_z*Y_derot_pred, epi_z*X_derot_pred - epi_x*Z_derot_pred, \
-		epi_x*Y_derot_pred - epi_y*X_derot_pred
-	Nf_x, Nf_y, Nf_z = FY_pred*Z_derot_pred - FZ_pred*Y_derot_pred, FZ_pred*X_derot_pred - FX_pred*Z_derot_pred, \
-		FX_pred*Y_derot_pred - FY_pred*X_derot_pred
-
-	Nq_norm = K.sqrt(K.square(Nq_x) + K.square(Nq_y) + K.square(Nq_z) + eps)
-	Nf_norm = K.sqrt(K.square(Nf_x) + K.square(Nf_y) + K.square(Nf_z) + eps)
-
-	# 5DoF epipolar loss
-	Epi_pred = tf.acos(K.clip((Nq_x*Nf_x + Nq_y*Nf_y + Nq_z*Nf_z) / (Nq_norm*Nf_norm + eps), min_value=-1.0+eps, max_value=1.0-eps)) * W
-	Epi_pred = K.square(Epi_pred)
-	Epi_pred = K.sum(Epi_pred, axis=(1,2))
-
-	# Loss function
-	loss = Epi_pred
-
-	return loss

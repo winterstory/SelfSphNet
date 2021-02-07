@@ -250,17 +250,16 @@ if __name__ == "__main__":
   print(' ')
   with open('results/results.txt', 'w') as file:
     file.write('[Data number, gt_quat, er_quat, gt_tran, er_tran]\n')
-    #print(gt_quat_init, er_quat_init, gt_tran_init, er_tran_init)
     print('  '+'Ground Truth Rotation'+'                 '+'Estimated Rotation'+'                    '+
           'Ground Truth Translation'+'     '+'Estimated Translation'+'        '+'Rotation'+'    '+'Translation')
     for i in range(len(dataset_test.images)-1):
-      gt_quaternion_12 = y_test_quaternion[i]    # I1 -> I2
-      gt_translation_12 = y_test_translation[i]    # I1 -> I2
-      gt_quaternion_23 = y_test_quaternion[i+1]  # I2 -> I3
-      gt_translation_23 = y_test_translation[i+1]  # I2 -> I3
+      gt_quaternion_12 = y_test_quaternion[i]
+      gt_translation_12 = y_test_translation[i]
+      gt_quaternion_23 = y_test_quaternion[i + 1]
+      gt_translation_23 = y_test_translation[i + 1]
 
-      er_quaternion_12 = out_quaternion_1[i]      # I1 -> I2
-      er_translation_12 = out_translation_1[i]      # I1 -> I2
+      er_quaternion_12 = out_quaternion_1[i]
+      er_translation_12 = out_translation_1[i]
 
       out_euler_12 = helper.convert_quaternion_to_euler(
         out_quaternion_1[i][0],
@@ -322,14 +321,18 @@ if __name__ == "__main__":
   tran_23[np.isnan(tran_23)] = 0
 
   med_rot_23 = np.median(rot_23, axis=0)
-  avg_rot_23, std_rot_23 = np.average(rot_23, axis=0), np.std(rot_23, axis=0)
+  avg_rot_23 = np.average(rot_23, axis=0)
+  std_rot_23 = np.std(rot_23, axis=0)
   med_tran_23 = np.median(tran_23, axis=0)
-  avg_tran_23, std_tran_23 = np.average(tran_23, axis=0), np.std(tran_23, axis=0)
+  avg_tran_23 = np.average(tran_23, axis=0)
+  std_tran_23 = np.std(tran_23, axis=0)
 
   med_rot_12 = np.median(rot_12, axis=0)
-  avg_rot_12, std_rot_12 = np.average(rot_12, axis=0), np.std(rot_12, axis=0)
+  avg_rot_12 = np.average(rot_12, axis=0)
+  std_rot_12 = np.std(rot_12, axis=0)
   med_tran_12 = np.median(tran_12, axis=0)
-  avg_tran_12, std_tran_12 = np.average(tran_12, axis=0), np.std(tran_12, axis=0)
+  avg_tran_12 = np.average(tran_12, axis=0)
+  std_tran_12 = np.std(tran_12, axis=0)
 
   print(' ')
   print(

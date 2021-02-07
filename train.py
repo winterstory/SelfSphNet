@@ -289,17 +289,17 @@ if __name__ == "__main__":
     optimizer = optimizer,
     loss = [
       helper.loss_dummy,
-      helper.epipolar_loss(
+      helper.get_epipolar_loss(
         input_of,
         output_q01),
-      helper.reconstruction_loss_SSIM(
+      helper.get_reconstruction_loss_SSIM(
         input_of,
         frame_t0,
         frame_t2,
         output_q01,
         output_t01,
         output_t02),
-      helper.reconstruction_loss_L1(
+      helper.get_reconstruction_loss_L1(
         input_of,
         frame_t0,
         frame_t2,
@@ -324,7 +324,10 @@ if __name__ == "__main__":
     validation_data = [
       [X_validation],
       [y_validation_quaternion, y_validation_translation, y_validation_quaternion, y_validation_translation]],
-    callbacks = [checkpointer, LearningRateScheduler(lr_schedule), MyCallback(lambda_epi, lambda_ssim, lambda_l1)],
+    callbacks = [
+      checkpointer,
+      LearningRateScheduler(lr_schedule),
+      MyCallback(lambda_epi, lambda_ssim, lambda_l1)],
     shuffle = True,
     verbose = 1)
 
