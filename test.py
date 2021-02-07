@@ -33,7 +33,7 @@ input_shape = (img_height, img_width, img_channel)
 
 
 def norm_clip(x):
-  return tf.clip_by_norm(x, 1, axes=[1])
+    return tf.clip_by_norm(x, 1, axes=[1])
 
 
 if __name__ == "__main__":

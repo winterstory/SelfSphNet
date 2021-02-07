@@ -1,11 +1,13 @@
 import numpy as np
 import tensorflow as tf
+
 from utils.bilinear_sampler import bilinear_sample
 
 
 def lat_long_grid(shape, epsilon=1.0e-12):
-    return tf.meshgrid(tf.linspace(-np.pi, np.pi, shape[1]),
-                       tf.linspace(-np.pi / 2.0 + epsilon, np.pi / 2.0 - epsilon, shape[0]))
+    return tf.meshgrid(
+        tf.linspace(-np.pi, np.pi, shape[1]),
+        tf.linspace(-np.pi / 2.0 + epsilon, np.pi / 2.0 - epsilon, shape[0]))
 
 
 # Convert Cartesian coordinates (x, y, z) to latitude (T) and longitude (S).
@@ -61,7 +63,9 @@ def rotate_and_translate(input_images, input_depth, qw, qx, qy, qz, tx, ty, tz, 
     input_depth = tf.reshape(input_depth, [batch_size, height * width])
     input_depth = tf.tile(tf.expand_dims(input_depth, 1), [1, 3, 1])
 
-    X = tf.tile(tf.expand_dims(tf.reshape(tf.stack([x, y, z]), [3, height * width]), 0), [batch_size, 1, 1])
+    X = tf.tile(
+        tf.expand_dims(tf.reshape(tf.stack([x, y, z]), [3, height * width]), 0),
+        [batch_size, 1, 1])
     t = tf.reshape(tf.stack([tx, ty, tz], axis=1), [batch_size, 3, height * width])
     X = X * input_depth + t
 
@@ -80,9 +84,17 @@ def rotate_and_translate(input_images, input_depth, qw, qx, qy, qz, tx, ty, tz, 
     X_transformed = tf.reshape(tf.matmul(R, X), [batch_size, 3, height, width])
 
     # Convert back to equirectangular UV.
-    S_rotated, T_rotated = xyz_to_lat_long(X_transformed[:,0,:,:], X_transformed[:,1,:,:], X_transformed[:,2,:,:])
+    S_rotated, T_rotated = xyz_to_lat_long(
+        X_transformed[:,0,:,:],
+        X_transformed[:,1,:,:],
+        X_transformed[:,2,:,:])
     u, v = lat_long_to_equirectangular_uv(S_rotated, T_rotated)
-    image = bilinear_sample(input_images, x_t=tf.zeros_like(u[0]), y_t=tf.zeros_like(v[0]), x_offset=u, y_offset=1.0-v)
+    image = bilinear_sample(
+        input_images,
+        x_t = tf.zeros_like(u[0]),
+        y_t = tf.zeros_like(v[0]),
+        x_offset = u,
+        y_offset = 1.0 - v)
     return image
 
 
@@ -109,7 +121,9 @@ def rotate(input_images, qw, qx, qy, qz, epsilon=1.0e-12):
     # Convert to Cartesian.
     S, T = lat_long_grid([height, width])
     x, y, z = lat_long_to_xyz(S, T)
-    X = tf.tile(tf.expand_dims(tf.reshape(tf.stack([x, y, z]), [3, height * width]), 0), [batch_size, 1, 1])
+    X = tf.tile(
+        tf.expand_dims(tf.reshape(tf.stack([x, y, z]), [3, height * width]), 0),
+        [batch_size, 1, 1])
 
     X_norm = tf.sqrt(X[:, 0, :] ** 2 + X[:, 1, :] ** 2 + X[:, 2, :] ** 2 + epsilon)
     X_norm = tf.tile(tf.expand_dims(X_norm, 1), [1, 3, 1])
@@ -126,9 +140,17 @@ def rotate(input_images, qw, qx, qy, qz, epsilon=1.0e-12):
     X_transformed = tf.reshape(tf.matmul(R, X), [batch_size, 3, height, width])
 
     # Convert back to equirectangular UV.
-    S_rotated, T_rotated = xyz_to_lat_long(X_transformed[:,0,:,:], X_transformed[:,1,:,:], X_transformed[:,2,:,:])
+    S_rotated, T_rotated = xyz_to_lat_long(
+        X_transformed[:,0,:,:],
+        X_transformed[:,1,:,:],
+        X_transformed[:,2,:,:])
     u, v = lat_long_to_equirectangular_uv(S_rotated, T_rotated)
-    image = bilinear_sample(input_images, x_t=tf.zeros_like(u[0]), y_t=tf.zeros_like(v[0]), x_offset=u, y_offset=1.0-v)
+    image = bilinear_sample(
+        input_images,
+        x_t = tf.zeros_like(u[0]),
+        y_t = tf.zeros_like(v[0]),
+        x_offset = u,
+        y_offset = 1.0 - v)
     return image
 
 

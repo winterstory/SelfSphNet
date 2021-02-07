@@ -98,8 +98,14 @@ def transform(input_images, x_t, y_t, x_offset, y_offset):
         x_t_flat = x_t_flat + tf.reshape(x_offset, [-1])
         y_t_flat = y_t_flat + tf.reshape(y_offset, [-1])
 
-        input_transformed = interpolate(input_images, x_t_flat, y_t_flat, [out_height, out_width])
-        output = tf.reshape(input_transformed, tf.stack([batch_size, out_height, out_width, num_channels]))
+        input_transformed = interpolate(
+            input_images,
+            x_t_flat,
+            y_t_flat,
+            [out_height, out_width])
+        output = tf.reshape(
+            input_transformed,
+            tf.stack([batch_size, out_height, out_width, num_channels]))
         return output
 
 
@@ -108,7 +114,8 @@ def uv_grid(shape):
     return u, v
 
 
-def bilinear_sample(input_images, x_t=None, y_t=None, x_offset=0.0, y_offset=0.0, name="bilinear_sampler"):
+def bilinear_sample(
+        input_images, x_t=None, y_t=None, x_offset=0.0, y_offset=0.0, name="bilinear_sampler"):
     with tf.compat.v1.variable_scope(name):
         height = tf.shape(input_images)[1]
         width = tf.shape(input_images)[2]

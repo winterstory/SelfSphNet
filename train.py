@@ -2,6 +2,7 @@ import numpy as np
 import os
 import tensorflow as tf
 import utils.helper as helper
+import utils.loss_handler as loss
 
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback
 from keras.initializers import Constant
@@ -20,8 +21,8 @@ kr = 0.0
 nb_epoch = 100
 batch_size = 4
 result_dir = 'results'
-file_path_train = 'dataset_train.txt'
-file_path_validation = 'dataset_validation.txt'
+file_path_train = 'dataset_test.txt'
+file_path_validation = 'dataset_test.txt'
 
 # Get train and validation dataset
 dataset_train = helper.get_dataset(file_path_train)
@@ -40,9 +41,10 @@ y_validation_translation = y_validation[:,4:7]
 X_train = X_train.astype('float32')
 X_validation = X_validation.astype('float32')
 
-img_height, img_width, img_channel = X_train.shape[1], X_train.shape[2], X_train.shape[3]
-input_shape = (img_height, img_width, img_channel)
+input_height, input_width, input_channel = X_train.shape[1], X_train.shape[2], X_train.shape[3]
+input_shape = (input_height, input_width, input_channel)
 
+# Set learning weights
 lambda_epi = K.variable(0.6)
 lambda_ssim = K.variable(1.0)
 lambda_l1 = K.variable(0.3)
@@ -50,11 +52,7 @@ lambda_l1 = K.variable(0.3)
 
 class MyCallback(Callback):
 
-    def __init__(
-            self,
-            lambda_epi,
-            lambda_ssim,
-            lambda_l1):
+    def __init__(self, lambda_epi, lambda_ssim, lambda_l1):
       self.lambda_epi = lambda_epi
       self.lambda_ssim = lambda_ssim
       self.lambda_l1 = lambda_l1
@@ -74,21 +72,22 @@ def lr_schedule(epoch):
 
 
 if __name__ == "__main__":
+
     # Pre-process input data
     input_tensor = Input(
         shape = input_shape,
         name='direct_epipolar')
     input_of = Lambda(
         lambda x: x[:,:,:,:2],
-        output_shape = (img_height, img_width, 2))(input_tensor)
+        output_shape = (input_height, input_width, 2))(input_tensor)
     frame_t0 = Lambda(
         lambda x: x[:,:,:,2:5],
-        output_shape = (img_height, img_width, 3))(input_tensor)
+        output_shape = (input_height, input_width, 3))(input_tensor)
     frame_t2 = Lambda(
         lambda x: x[:,:,:,5:8],
-        output_shape = (img_height, img_width, 3))(input_tensor)
+        output_shape = (input_height, input_width, 3))(input_tensor)
 
-    # Network structure
+    # Stack up network blocks
     convraw1_1 = Conv2D(
         filters = 16,
         kernel_size = 7,
@@ -261,6 +260,7 @@ if __name__ == "__main__":
     #plot_model(model, to_file='results/model.png')
     model.summary()
 
+    # Set optimizer
     optimizer = Adam(
         lr = lr,
         beta_1 = 0.9,
@@ -269,27 +269,14 @@ if __name__ == "__main__":
         decay = 0.0,
         amsgrad = False)
 
+    # Compile model
     model.compile(
         optimizer = optimizer,
         loss = [
-            helper.loss_dummy,
-            helper.get_epipolar_loss(
-            input_of,
-            output_q01),
-            helper.get_reconstruction_loss_SSIM(
-                input_of,
-                frame_t0,
-                frame_t2,
-                output_q01,
-                output_t01,
-                output_t02),
-            helper.get_reconstruction_loss_L1(
-                input_of,
-                frame_t0,
-                frame_t2,
-                output_q01,
-                output_q02,
-                output_t01)],
+            loss.get_dummy_loss,
+            loss.get_epipolar_loss(input_of, output_q01),
+            loss.get_ssim_loss(input_of, frame_t0, frame_t2, output_q01, output_t01, output_t02),
+            loss.get_l1_loss(input_of, frame_t0, frame_t2, output_q01, output_q02, output_t01)],
         loss_weights = [0.0, lambda_epi, lambda_ssim, lambda_l1])
 
     # Setup checkpointer
@@ -299,7 +286,7 @@ if __name__ == "__main__":
         save_best_only = True,
         save_weights_only = True)
 
-    # Train
+    # Train the model
     history = model.fit(
         [X_train],
         [y_train_quaternion, y_train_translation, y_train_quaternion, y_train_translation],
@@ -307,7 +294,10 @@ if __name__ == "__main__":
         epochs = nb_epoch,
         validation_data = [
             [X_validation],
-            [y_validation_quaternion, y_validation_translation, y_validation_quaternion, y_validation_translation]],
+            [y_validation_quaternion,
+             y_validation_translation,
+             y_validation_quaternion,
+             y_validation_translation]],
         callbacks = [
             checkpointer,
             LearningRateScheduler(lr_schedule),
