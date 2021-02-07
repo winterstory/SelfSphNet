@@ -146,8 +146,10 @@ def save_history(history, result_file):
 			fp.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (i, loss[i], tran_1_loss[i], quat_2_loss[i], tran_2_loss[i],
 				val_loss[i], val_tran_1_loss[i], val_quat_2_loss[i], val_tran_2_loss[i]))
 
+
 def tf_batch_matrix(matrix):
 	return tf.transpose(tf.stack(matrix), [2, 0, 1])
+
 
 def gaussFilter(fx, fy, sigma):
 	x = tf.range(-int(fx / 2), int(fx / 2) + 1, 1)
@@ -160,6 +162,7 @@ def gaussFilter(fx, fy, sigma):
 	k = tf.divide(k, tf.reduce_sum(k))
 
 	return k
+
 
 def gaussian_blur(image, filtersize, sigma, n_channels):
 	fx, fy = filtersize[0], filtersize[1]
