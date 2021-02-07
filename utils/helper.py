@@ -1,13 +1,13 @@
-from tqdm import tqdm
-from keras import backend as K
-import numpy as np
-import os
+import cv2
 import matplotlib.pyplot as plt
 import math
+import numpy as np
+import os
 import tensorflow as tf
-import cv2
 import utils.reconstruction as reconstruction
-import keras
+
+from tqdm import tqdm
+from keras import backend as K
 
 
 # Set directories
