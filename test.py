@@ -13,62 +13,27 @@ from keras.models import Model, Input
 #from keras.utils import plot_model
 
 
-# Get test data
-dataset_test = helper.get_test_data()
+# Set parameters
+result_dir = 'results'
+file_path_test = 'dataset_test.txt'
+kr = 0.0
+
+# Get test dataset
+dataset_test = helper.get_dataset(file_path_test)
 
 X_test = np.squeeze(np.array(dataset_test.images))
 y_test = np.squeeze(np.array(dataset_test.poses))
 X_test = X_test.astype('float32')
 
-y_test_q = y_test[:,:4]
-y_test_t = y_test[:,4:7]
+y_test_quaternion = y_test[:,:4]
+y_test_translation = y_test[:,4:7]
 
-# Set parameters
-result_dir = 'results'
 img_height, img_width, img_channel = X_test.shape[1], X_test.shape[2], X_test.shape[3]
 input_shape = (img_height, img_width, img_channel)
-kr = 0.0
+
 
 def norm_clip(x):
   return tf.clip_by_norm(x, 1, axes=[1])
-
-def quaternion_to_euler(w, x, y, z):
-  roll = np.arctan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x ** 2 + y ** 2))
-  pitch = np.arcsin(2.0 * (w * y - z * x))
-  yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y ** 2 + z ** 2))
-
-  return np.array([roll, pitch, yaw])
-
-def euler_to_quaternion(roll, pitch, yaw):
-  sr = np.sin(roll / 2.0)
-  cr = np.cos(roll / 2.0)
-  sp = np.sin(pitch / 2.0)
-  cp = np.cos(pitch / 2.0)
-  sy = np.sin(yaw / 2.0)
-  cy = np.cos(yaw / 2.0)
-
-  # ZYX rotation
-  w = cr * cp * cy + sr * sp * sy
-  x = sr * cp * cy - cr * sp * sy
-  y = cr * sp * cy + sr * cp * sy
-  z = cr * cp * sy - sr * sp * cy
-
-  return np.array([w, x, y, z])
-
-def tran_error(gt, er):
-  q1 = gt / np.linalg.norm(gt)
-  q2 = er / np.linalg.norm(er)
-  d_q = abs(np.sum(np.multiply(q1, q2)))
-  tran = np.arccos(d_q) * 180 / math.pi
-
-  return tran
-
-def rot_error(gt, er):
-  q1 = gt / np.linalg.norm(gt)
-  q2 = er / np.linalg.norm(er)
-  d_q = abs(np.sum(np.multiply(q1, q2)))
-  rot = 2 * np.arccos(d_q) * 180 / math.pi
-  return rot
 
 
 if __name__ == "__main__":
@@ -227,19 +192,19 @@ if __name__ == "__main__":
   output_q01 = Dense(
     units = 4,
     activation = None,
-    name = 'quat_1')(avg_pool2)
+    name = 'out_quaternion_1')(avg_pool2)
   output_t01 = Dense(
     units = 3,
     activation = None,
-    name='tran_1')(avg_pool2)
+    name='out_translation_1')(avg_pool2)
   output_q02 = Dense(
     units = 4,
     activation = None,
-    name = 'quat_2')(avg_pool1)
+    name = 'out_quaternion_2')(avg_pool1)
   output_t02 = Dense(
     units = 3,
     activation = None,
-    name='tran_2')(avg_pool1)
+    name='out_translation_2')(avg_pool1)
 
   output_q01 = Lambda(lambda x: K.l2_normalize((x + K.epsilon()), axis = 1))(output_q01)
   output_t01 = Lambda(lambda x: K.l2_normalize((x + K.epsilon()), axis = 1))(output_t01)
@@ -255,7 +220,7 @@ if __name__ == "__main__":
   model.load_weights(os.path.join(result_dir, 'checkpoint_weights.h5'))
   print("weights.h5 Loaded")
 
-  quat_1, tran_1, quat_2, tran_2 = model.predict(X_test)
+  out_quaternion_1, out_translation_1, out_quaternion_2, out_translation_2 = model.predict(X_test)
 
   rot_23 = np.zeros((len(dataset_test.images), 2))
   tran_23 = np.zeros((len(dataset_test.images), 2))
@@ -263,10 +228,24 @@ if __name__ == "__main__":
   tran_12 = np.zeros((len(dataset_test.images), 2))
 
   np.set_printoptions(precision=5)
-  gt_quat_init = np.array([y_test_q[0][0], y_test_q[0][1], y_test_q[0][2], y_test_q[0][3]])
-  er_quat_init = np.array([quat_1[0][0], quat_1[0][1], quat_1[0][2], quat_1[0][3]])
-  gt_tran_init = np.array([y_test_t[0][0], y_test_t[0][1], y_test_t[0][2]])
-  er_tran_init = np.array([tran_1[0][0], tran_1[0][1], tran_1[0][2]])
+  gt_quat_init = np.array([
+    y_test_quaternion[0][0],
+    y_test_quaternion[0][1],
+    y_test_quaternion[0][2],
+    y_test_quaternion[0][3]])
+  er_quat_init = np.array([
+    out_quaternion_1[0][0],
+    out_quaternion_1[0][1],
+    out_quaternion_1[0][2],
+    out_quaternion_1[0][3]])
+  gt_tran_init = np.array([
+    y_test_translation[0][0],
+    y_test_translation[0][1],
+    y_test_translation[0][2]])
+  er_tran_init = np.array([
+    out_translation_1[0][0],
+    out_translation_1[0][1],
+    out_translation_1[0][2]])
 
   print(' ')
   with open('results/results.txt', 'w') as file:
@@ -275,46 +254,72 @@ if __name__ == "__main__":
     print('  '+'Ground Truth Rotation'+'                 '+'Estimated Rotation'+'                    '+
           'Ground Truth Translation'+'     '+'Estimated Translation'+'        '+'Rotation'+'    '+'Translation')
     for i in range(len(dataset_test.images)-1):
-      gt_quat_12 = y_test_q[i]    # I1 -> I2
-      gt_tran_12 = y_test_t[i]    # I1 -> I2
-      gt_quat_23 = y_test_q[i+1]  # I2 -> I3
-      gt_tran_23 = y_test_t[i+1]  # I2 -> I3
+      gt_quaternion_12 = y_test_quaternion[i]    # I1 -> I2
+      gt_translation_12 = y_test_translation[i]    # I1 -> I2
+      gt_quaternion_23 = y_test_quaternion[i+1]  # I2 -> I3
+      gt_translation_23 = y_test_translation[i+1]  # I2 -> I3
 
-      er_quat_12 = quat_1[i]      # I1 -> I2
-      er_tran_12 = tran_1[i]      # I1 -> I2
+      er_quaternion_12 = out_quaternion_1[i]      # I1 -> I2
+      er_translation_12 = out_translation_1[i]      # I1 -> I2
 
-      euler_12 = quaternion_to_euler(quat_1[i][0], quat_1[i][1], quat_1[i][2], quat_1[i][3])
-      euler_13 = quaternion_to_euler(quat_2[i][0], quat_2[i][1], quat_2[i][2], quat_2[i][3])
-      euler_23 = euler_13 - euler_12
+      out_euler_12 = helper.convert_quaternion_to_euler(
+        out_quaternion_1[i][0],
+        out_quaternion_1[i][1],
+        out_quaternion_1[i][2],
+        out_quaternion_1[i][3])
+      out_euler_13 = helper.convert_quaternion_to_euler(
+        out_quaternion_2[i][0],
+        out_quaternion_2[i][1],
+        out_quaternion_2[i][2],
+        out_quaternion_2[i][3])
+      out_euler_23 = out_euler_13 - out_euler_12
 
-      er_quat_23 = euler_to_quaternion(euler_23[0], euler_23[1], euler_23[2])
+      er_quaternion_23 = helper.convert_euler_to_quaternion(
+        out_euler_23[0],
+        out_euler_23[1],
+        out_euler_23[2])
 
-      gt_tran_23 = gt_tran_23
-      er_tran_23 = (tran_2[i] - er_tran_12) * np.linalg.norm(gt_tran_12)
+      gt_translation_23 = gt_translation_23
+      er_translation_23 = (out_translation_2[i] - er_translation_12) * np.linalg.norm(gt_translation_12)
 
       # Error evaluation for photometric reprojection loss
-      d_q_23 = abs(np.sum(np.multiply(gt_quat_23, er_quat_23)))
+      d_q_23 = abs(np.sum(np.multiply(gt_quaternion_23, er_quaternion_23)))
       error_rot_23 = np.round(2 * np.arccos(d_q_23) * 180 / math.pi, 5)
-      error_tran_23 = np.round(np.linalg.norm(gt_tran_23 - er_tran_23), 5)
+      error_tran_23 = np.round(np.linalg.norm(gt_translation_23 - er_translation_23), 5)
       rot_23[i, :] = [error_rot_23]
       tran_23[i, :] = [error_tran_23]
-      print(i+1, gt_quat_23, er_quat_23, gt_tran_23, er_tran_23, str(error_rot_23)+'[deg]', str(error_tran_23)+'[m]')
+      print(
+        i + 1,
+        gt_quaternion_23,
+        er_quaternion_23,
+        gt_translation_23,
+        er_translation_23,
+        str(error_rot_23) + '[deg]',
+        str(error_tran_23) + '[m]')
 
       # Error evaluation for epipolar angular loss
-      d_q_12 = abs(np.sum(np.multiply(gt_quat_12, er_quat_12)))
+      d_q_12 = abs(np.sum(np.multiply(gt_quaternion_12, er_quaternion_12)))
       error_rot_12 = np.round(2 * np.arccos(d_q_12) * 180 / math.pi, 5)
-      gt_tran_12 = gt_tran_12 / np.linalg.norm(gt_tran_12)
-      er_tran_12 = er_tran_12 / np.linalg.norm(er_tran_12)
-      d_t_12 = abs(np.sum(np.multiply(gt_tran_12, er_tran_12)))
+      gt_translation_12 /= np.linalg.norm(gt_translation_12)
+      er_translation_12 /= np.linalg.norm(er_translation_12)
+      d_t_12 = abs(np.sum(np.multiply(gt_translation_12, er_translation_12)))
       error_tran_12 = np.round(np.arccos(d_t_12) * 180 / math.pi, 5)
       rot_12[i, :] = [error_rot_12]
       tran_12[i, :] = [error_tran_12]
-      #print(i+1, gt_quat_12, er_quat_12, gt_tran_12, er_tran_12, str(error_rot_12)+'[deg]', str(error_tran_12)+'[deg]')
+      # print(
+      #   i + 1,
+      #   gt_quaternion_12,
+      #   er_quaternion_12,
+      #   gt_translation_12,
+      #   er_translation_12,
+      #   str(error_rot_12) + '[deg]',
+      #   str(error_tran_12) + '[deg]')
 
-  rot_12[np.isnan(rot_12)] = 0  # nan=0
-  rot_23[np.isnan(rot_23)] = 0  # nan=0
-  tran_12[np.isnan(tran_12)] = 0  # nan=0
-  tran_23[np.isnan(tran_23)] = 0  # nan=0
+  # Handle nan value to zero
+  rot_12[np.isnan(rot_12)] = 0
+  rot_23[np.isnan(rot_23)] = 0
+  tran_12[np.isnan(tran_12)] = 0
+  tran_23[np.isnan(tran_23)] = 0
 
   med_rot_23 = np.median(rot_23, axis=0)
   avg_rot_23, std_rot_23 = np.average(rot_23, axis=0), np.std(rot_23, axis=0)
@@ -327,12 +332,44 @@ if __name__ == "__main__":
   avg_tran_12, std_tran_12 = np.average(tran_12, axis=0), np.std(tran_12, axis=0)
 
   print(' ')
-  print('Median rot_23. error ', np.round(med_rot_23[1], 5), '[deg].')
-  print('Average rot_23. error ', np.round(avg_rot_23[1], 5), '+/-', np.round(std_rot_23[1], 5), '[deg].')
-  print('Median tran_23. error ', np.round(med_tran_23[1], 5), '[m].')
-  print('Average tran_23. error ', np.round(avg_tran_23[1], 5), '+/-', np.round(std_tran_23[1], 5), '[m].')
+  print(
+    'Median rot_23. error ',
+    np.round(med_rot_23[1], 5),
+    '[deg].')
+  print(
+    'Average rot_23. error ',
+    np.round(avg_rot_23[1], 5),
+    '+/-',
+    np.round(std_rot_23[1], 5),
+    '[deg].')
+  print(
+    'Median tran_23. error ',
+    np.round(med_tran_23[1], 5),
+    '[m].')
+  print(
+    'Average tran_23. error ',
+    np.round(avg_tran_23[1], 5),
+    '+/-',
+    np.round(std_tran_23[1], 5),
+    '[m].')
   print(' ')
-  print('Median rot_12. error ', np.round(med_rot_12[1], 5), '[deg].')
-  print('Average rot_12. error ', np.round(avg_rot_12[1], 5), '+/-', np.round(std_rot_12[1], 5), '[deg].')
-  print('Median tran_12. error ', np.round(med_tran_12[1], 5), '[m].')
-  print('Average tran_12. error ', np.round(avg_tran_12[1], 5), '+/-', np.round(std_tran_12[1], 5), '[deg].')
+  print(
+    'Median rot_12. error ',
+    np.round(med_rot_12[1], 5),
+    '[deg].')
+  print(
+    'Average rot_12. error ',
+    np.round(avg_rot_12[1], 5),
+    '+/-',
+    np.round(std_rot_12[1], 5),
+    '[deg].')
+  print(
+    'Median tran_12. error ',
+    np.round(med_tran_12[1], 5),
+    '[m].')
+  print(
+    'Average tran_12. error ',
+    np.round(avg_tran_12[1], 5),
+    '+/-',
+    np.round(std_tran_12[1], 5),
+    '[deg].')

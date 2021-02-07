@@ -12,9 +12,6 @@ from keras import backend as K
 
 # Set directories
 directory = 'datasets/'
-dataset_train = 'dataset_train.txt'
-dataset_validation = 'dataset_validation.txt'
-dataset_test = 'dataset_test.txt'
 result_dir = 'results'
 
 # Set constant values
@@ -30,31 +27,33 @@ class datasource(object):
 		self.images = images
 		self.poses = poses
 
-def preprocess(images_1, images_2, images_3):
+
+def preprocess_image(images_1, images_2, images_3):
 	images_out = []
 	for i in tqdm(list(range(len(images_1)))):
-		X_1 = np.load(images_1[i])  # get optical flow
-		X_2 = cv2.imread(images_2[i])  # get rgb pre-frames
-		X_2 = cv2.cvtColor(X_2, cv2.COLOR_BGR2RGB)
-		X_3 = cv2.imread(images_3[i])  # get rgb post-frames
-		X_3 = cv2.cvtColor(X_3, cv2.COLOR_BGR2RGB)
+		optical_flow = np.load(images_1[i])
+		frame_1 = cv2.imread(images_2[i])
+		frame_1 = cv2.cvtColor(frame_1, cv2.COLOR_BGR2RGB)
+		frame_2 = cv2.imread(images_3[i])
+		frame_2 = cv2.cvtColor(frame_2, cv2.COLOR_BGR2RGB)
 
-		X_2 = X_2 / 255.0
-		X_3 = X_3 / 255.0
-		X_2 = X_2.astype('float32')
-		X_3 = X_3.astype('float32')
+		frame_1 = frame_1 / 255.0
+		frame_2 = frame_2 / 255.0
+		frame_1 = frame_1.astype('float32')
+		frame_2 = frame_2.astype('float32')
 
-		X = np.dstack([X_1, X_2, X_3])
+		X = np.dstack([optical_flow, frame_1, frame_2])
 		images_out.append(X)
 
 	return images_out
+
 
 def get_data(dataset):
 	poses = []
 	images_1 = []
 	images_2 = []
 	images_3 = []
-	with open(directory+dataset) as f:
+	with open(directory + dataset) as f:
 		next(f)
 		next(f)
 		next(f)
@@ -71,45 +70,48 @@ def get_data(dataset):
 			images_1.append(directory+fname_1)
 			images_2.append(directory+fname_2)
 			images_3.append(directory+fname_3)
-	images = preprocess(images_1, images_2, images_3)
+	images = preprocess_image(images_1, images_2, images_3)
 
 	return datasource(images, poses)
 
-def get_train_data():
-	datasource_train = get_data(dataset_train)
 
-	images_train = []
-	poses_train = []
+def get_dataset(file_path):
+	dataset = get_data(file_path)
 
-	for i in range(len(datasource_train.images)):
-		images_train.append(datasource_train.images[i])
-		poses_train.append(datasource_train.poses[i])
+	images = []
+	poses = []
 
-	return datasource(images_train, poses_train)
+	for i in range(len(dataset.images)):
+		images.append(dataset.images[i])
+		poses.append(dataset.poses[i])
 
-def get_validation_data():
-	datasource_validation = get_data(dataset_validation)
+	return datasource(images, poses)
 
-	images_validation = []
-	poses_validation = []
 
-	for i in range(len(datasource_validation.images)):
-		images_validation.append(datasource_validation.images[i])
-		poses_validation.append(datasource_validation.poses[i])
+def convert_quaternion_to_euler(w, x, y, z):
+	roll = np.arctan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x ** 2 + y ** 2))
+	pitch = np.arcsin(2.0 * (w * y - z * x))
+	yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y ** 2 + z ** 2))
 
-	return datasource(images_validation, poses_validation)
+	return np.array([roll, pitch, yaw])
 
-def get_test_data():
-	datasource_test = get_data(dataset_test)
 
-	images_test = []
-	poses_test = []
+def convert_euler_to_quaternion(roll, pitch, yaw):
+	sr = np.sin(roll / 2.0)
+	cr = np.cos(roll / 2.0)
+	sp = np.sin(pitch / 2.0)
+	cp = np.cos(pitch / 2.0)
+	sy = np.sin(yaw / 2.0)
+	cy = np.cos(yaw / 2.0)
 
-	for i in range(len(datasource_test.images)):
-		images_test.append(datasource_test.images[i])
-		poses_test.append(datasource_test.poses[i])
+	# ZYX rotation
+	w = cr * cp * cy + sr * sp * sy
+	x = sr * cp * cy - cr * sp * sy
+	y = cr * sp * cy + sr * cp * sy
+	z = cr * cp * sy - sr * sp * cy
 
-	return datasource(images_test, poses_test)
+	return np.array([w, x, y, z])
+
 
 def plot_history(history):
 	plt.plot(history.history['loss'], color='green')

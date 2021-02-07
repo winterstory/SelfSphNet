@@ -14,25 +14,28 @@ from keras import backend as K
 #from keras.utils import plot_model
 
 
+# Set parameters
 lr = 0.0002
 kr = 0.0
 nb_epoch = 100
 batch_size = 4
 result_dir = 'results'
+file_path_train = 'dataset_train.txt'
+file_path_validation = 'dataset_validation.txt'
 
-# Get train data
-dataset_train = helper.get_train_data()
-dataset_validation = helper.get_validation_data()
+# Get train and validation dataset
+dataset_train = helper.get_dataset(file_path_train)
+dataset_validation = helper.get_dataset(file_path_validation)
 
 X_train = np.squeeze(np.array(dataset_train.images))
 X_validation = np.squeeze(np.array(dataset_validation.images))
 y_train = np.squeeze(np.array(dataset_train.poses))
 y_validation = np.squeeze(np.array(dataset_validation.poses))
 
-y_train_q = y_train[:,:4]
-y_train_t = y_train[:,4:7]
-y_validation_q = y_validation[:,:4]
-y_validation_t = y_validation[:,4:7]
+y_train_quaternion = y_train[:,:4]
+y_train_translation = y_train[:,4:7]
+y_validation_quaternion = y_validation[:,:4]
+y_validation_translation = y_validation[:,4:7]
 
 X_train = X_train.astype('float32')
 X_validation = X_validation.astype('float32')
@@ -315,10 +318,12 @@ if __name__ == "__main__":
   # Train
   history = model.fit(
     [X_train],
-    [y_train_q, y_train_t, y_train_q, y_train_t],
+    [y_train_quaternion, y_train_translation, y_train_quaternion, y_train_translation],
     batch_size = batch_size,
     epochs = nb_epoch,
-    validation_data = [[X_validation], [y_validation_q, y_validation_t, y_validation_q, y_validation_t]],
+    validation_data = [
+      [X_validation],
+      [y_validation_quaternion, y_validation_translation, y_validation_quaternion, y_validation_translation]],
     callbacks = [checkpointer, LearningRateScheduler(lr_schedule), MyCallback(lambda_epi, lambda_ssim, lambda_l1)],
     shuffle = True,
     verbose = 1)
