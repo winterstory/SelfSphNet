@@ -1,14 +1,14 @@
-import numpy as np
+import numpy
 import os
-import tensorflow as tf
 import utils.helper as helper
 import utils.loss_handler as loss
 
-from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback
+from keras.callbacks import Callback, LearningRateScheduler, ModelCheckpoint
 from keras.initializers import Constant
-from keras.layers import Dense, Lambda, BatchNormalization, Activation, Concatenate, GlobalAveragePooling2D
+from keras.layers import Activation, BatchNormalization, Concatenate, Dense,\
+    GlobalAveragePooling2D, Lambda
 from keras.layers.convolutional import Conv2D
-from keras.models import Model, Input
+from keras.models import Input, Model
 from keras.optimizers import Adam
 from keras import regularizers
 from keras import backend as K
@@ -28,10 +28,10 @@ file_path_validation = 'dataset_test.txt'
 dataset_train = helper.get_dataset(file_path_train)
 dataset_validation = helper.get_dataset(file_path_validation)
 
-X_train = np.squeeze(np.array(dataset_train.images))
-X_validation = np.squeeze(np.array(dataset_validation.images))
-y_train = np.squeeze(np.array(dataset_train.poses))
-y_validation = np.squeeze(np.array(dataset_validation.poses))
+X_train = numpy.squeeze(numpy.array(dataset_train.images))
+X_validation = numpy.squeeze(numpy.array(dataset_validation.images))
+y_train = numpy.squeeze(numpy.array(dataset_train.poses))
+y_validation = numpy.squeeze(numpy.array(dataset_validation.poses))
 
 y_train_quaternion = y_train[:,:4]
 y_train_translation = y_train[:,4:7]
@@ -61,8 +61,6 @@ class MyCallback(Callback):
         if epoch in [2, 4, 6, 8, 10, 12, 14, 16, 18]:
             K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
 
-def norm_clip(x):
-        return tf.clip_by_norm(x, 1, axes=[1])
 
 def lr_schedule(epoch):
     lr = 0.0002
@@ -224,17 +222,17 @@ if __name__ == "__main__":
 
     output_q01 = Dense(
         units = 4,
-        activation = norm_clip,
+        activation = helper.clip_norm,
         kernel_initializer = 'zero',
         bias_initializer = Constant(value=[1.0, 0.0, 0.0, 0.0]),
         kernel_regularizer = regularizers.l2(kr))(avg_pool2)
     output_t01 = Dense(
         units = 3,
-        activation = norm_clip,
+        activation = helper.clip_norm,
         kernel_regularizer = regularizers.l2(kr))(avg_pool2)
     output_q02 = Dense(
         units = 4,
-        activation = norm_clip,
+        activation = helper.clip_norm,
         kernel_initializer = 'zero',
         bias_initializer = Constant(value=[1.0, 0.0, 0.0, 0.0]),
         kernel_regularizer = regularizers.l2(kr))(avg_pool1)

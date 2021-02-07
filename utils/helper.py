@@ -233,3 +233,7 @@ def get_3d_optical_flow(width, height, optical_flow):
          K.sin(math.pi * (v_tensor + optical_flow[:, :, :, 1]) / height)
     FZ = K.cos(math.pi * (v_tensor + optical_flow[:, :, :, 1]) / height)
     return FX, FY, FZ, XYZ, Z
+
+
+def clip_norm(x):
+    return tf.clip_by_norm(x, 1, axes=[1])
