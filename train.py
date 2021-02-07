@@ -60,24 +60,9 @@ class MyCallback(Callback):
     self.lambda_l1 = lambda_l1
 
   def on_epoch_end(self, epoch, log={}):
-    if epoch == 2:
+    if epoch in [2, 4, 6, 8, 10, 12, 14, 16, 18]:
       K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 4:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 6:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 8:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 10:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 12:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 14:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 16:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
-    if epoch == 18:
-      K.set_value(self.lambda_epi, K.get_value(self.lambda_epi) - 0.05)
+
 
 def norm_clip(x):
   return tf.clip_by_norm(x, 1, axes=[1])
